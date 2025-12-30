@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+"""Entry point for bothost.ru and similar platforms."""
+import sys
+import os
+
+# Add project root to Python path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Now import and run the bot
+from bot.main import main
+import asyncio
+
+if __name__ == "__main__":
+    asyncio.run(main())
