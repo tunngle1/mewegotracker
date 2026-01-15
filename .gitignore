@@ -37,3 +37,10 @@ logs/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Import files (sensitive user data)
+database old/
+*.xlsx
+.import_complete
+import_users.py
+view_users.py
