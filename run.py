@@ -22,7 +22,7 @@ async def run_import_once():
     from bot.models import User
     
     # Check if Excel file exists
-    excel_path = Path("DATABASE OLD/mewego_users_20260115_1122.xlsx")
+    excel_path = Path("database old/mewego_users_20260115_1122.xlsx")
     if not excel_path.exists():
         print("No Excel file to import, skipping...")
         return
@@ -136,7 +136,7 @@ async def run_habits_import():
     from bot.models import User, Habit, ScheduleType
     
     # Check if habits Excel file exists
-    excel_path = Path("DATABASE OLD/mewego_habits_20260115_1129.xlsx")
+    excel_path = Path("database old/mewego_habits_20260115_1129.xlsx")
     if not excel_path.exists():
         print("No habits Excel file to import, skipping...")
         return
