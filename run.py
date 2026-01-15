@@ -131,11 +131,140 @@ async def run_import_once():
     print("=" * 50)
 
 
+async def run_habits_import():
+    """
+    Import habits from Excel file if it exists.
+    """
+    from pathlib import Path
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from openpyxl import load_workbook
+    from sqlalchemy import select
+    from bot.database import async_session, init_db
+    from bot.models import User, Habit, ScheduleType
+    
+    # Check if habits Excel file exists
+    excel_path = Path("database old/mewego_habits_20260115_1129.xlsx")
+    if not excel_path.exists():
+        print("No habits Excel file to import, skipping...")
+        return
+    
+    # Check if we already imported habits
+    marker_path = Path(".import_habits_complete")
+    if marker_path.exists():
+        print("Habits import already completed, skipping...")
+        return
+    
+    print("=" * 50)
+    print("RUNNING HABITS IMPORT FROM EXCEL")
+    print("=" * 50)
+    
+    MSK = ZoneInfo("Europe/Moscow")
+    
+    def parse_datetime(dt_str):
+        if not dt_str or dt_str == "":
+            return None
+        try:
+            msk_dt = datetime.strptime(str(dt_str), "%Y-%m-%d %H:%M")
+            msk_dt = msk_dt.replace(tzinfo=MSK)
+            return msk_dt.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+        except Exception:
+            return None
+    
+    def safe_int(value, default=None):
+        if value is None or value == "" or value == "None":
+            return default
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return default
+    
+    await init_db()
+    
+    wb = load_workbook(excel_path)
+    ws = wb.active
+    
+    headers = [cell.value for cell in ws[1]]
+    col_map = {h: i for i, h in enumerate(headers)}
+    print(f"Found columns: {list(col_map.keys())}")
+    
+    def get_col(row, name, default=None):
+        idx = col_map.get(name)
+        if idx is not None and idx < len(row):
+            val = row[idx]
+            return val if val and val != "None" else default
+        return default
+    
+    imported = 0
+    skipped = 0
+    
+    async with async_session() as session:
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            try:
+                telegram_id = safe_int(get_col(row, "Telegram ID"))
+                if not telegram_id:
+                    continue
+                
+                result = await session.execute(
+                    select(User).where(User.telegram_id == telegram_id)
+                )
+                user = result.scalar_one_or_none()
+                
+                if not user:
+                    continue
+                
+                habit_name = get_col(row, "Название привычки")
+                if not habit_name:
+                    continue
+                
+                # Check if habit exists
+                result = await session.execute(
+                    select(Habit).where(
+                        Habit.user_id == user.id,
+                        Habit.name == habit_name
+                    )
+                )
+                if result.scalar_one_or_none():
+                    skipped += 1
+                    continue
+                
+                type_str = get_col(row, "Тип", "Ежедневно")
+                schedule_type = ScheduleType.DAILY if "Ежедневно" in str(type_str) else ScheduleType.WEEKLY
+                
+                habit = Habit(
+                    user_id=user.id,
+                    name=habit_name,
+                    schedule_type=schedule_type,
+                    weekly_target=safe_int(get_col(row, "Цель (раз/нед)"), 7),
+                    is_active=(get_col(row, "Активна") == "Да"),
+                    created_at=parse_datetime(get_col(row, "Дата создания (МСК)")),
+                )
+                
+                session.add(habit)
+                imported += 1
+                print(f"Imported habit: {habit_name} for {user.name}")
+                
+            except Exception as e:
+                print(f"Error: {e}")
+                continue
+        
+        await session.commit()
+    
+    marker_path.write_text(f"Habits import completed at {datetime.now()}")
+    
+    print(f"\n=== Habits Import Complete ===")
+    print(f"Imported: {imported}")
+    print(f"Skipped: {skipped}")
+    print("=" * 50)
+
+
 # Now import and run the bot
 from bot.main import main
 
 if __name__ == "__main__":
-    # Run import first
+    # Run imports first
     asyncio.run(run_import_once())
+    asyncio.run(run_habits_import())
     # Then start bot
     main()
+
