@@ -10,8 +10,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 async def run_import_once():
     """
-    Import users from Excel file if it exists and hasn't been imported yet.
-    This runs once on first startup after deploy.
+    Import users from Excel file if it exists.
+    Safely skips already existing users.
     """
     from pathlib import Path
     from datetime import datetime
@@ -27,14 +27,8 @@ async def run_import_once():
         print("No Excel file to import, skipping...")
         return
     
-    # Check if we already imported (marker file)
-    marker_path = Path(".import_complete")
-    if marker_path.exists():
-        print("Import already completed previously, skipping...")
-        return
-    
     print("=" * 50)
-    print("RUNNING ONE-TIME USER IMPORT FROM EXCEL")
+    print("RUNNING USER IMPORT FROM EXCEL")
     print("=" * 50)
     
     MSK = ZoneInfo("Europe/Moscow")
@@ -114,7 +108,7 @@ async def run_import_once():
                 
                 session.add(user)
                 imported += 1
-                print(f"Imported: {user.name} ({telegram_id})")
+                print(f"Imported user: {user.name} ({telegram_id})")
                 
             except Exception as e:
                 print(f"Error: {e}")
@@ -122,18 +116,16 @@ async def run_import_once():
         
         await session.commit()
     
-    # Create marker file so we don't import again
-    marker_path.write_text(f"Import completed at {datetime.now()}")
-    
-    print(f"\n=== Import Complete ===")
+    print(f"\n=== Users Import Complete ===")
     print(f"Imported: {imported}")
-    print(f"Skipped: {skipped}")
+    print(f"Skipped (already exist): {skipped}")
     print("=" * 50)
 
 
 async def run_habits_import():
     """
     Import habits from Excel file if it exists.
+    Safely skips already existing habits.
     """
     from pathlib import Path
     from datetime import datetime
@@ -147,12 +139,6 @@ async def run_habits_import():
     excel_path = Path("database old/mewego_habits_20260115_1129.xlsx")
     if not excel_path.exists():
         print("No habits Excel file to import, skipping...")
-        return
-    
-    # Check if we already imported habits
-    marker_path = Path(".import_habits_complete")
-    if marker_path.exists():
-        print("Habits import already completed, skipping...")
         return
     
     print("=" * 50)
@@ -211,6 +197,7 @@ async def run_habits_import():
                 user = result.scalar_one_or_none()
                 
                 if not user:
+                    print(f"User not found: {telegram_id}")
                     continue
                 
                 habit_name = get_col(row, "Название привычки")
@@ -250,11 +237,9 @@ async def run_habits_import():
         
         await session.commit()
     
-    marker_path.write_text(f"Habits import completed at {datetime.now()}")
-    
     print(f"\n=== Habits Import Complete ===")
     print(f"Imported: {imported}")
-    print(f"Skipped: {skipped}")
+    print(f"Skipped (already exist): {skipped}")
     print("=" * 50)
 
 
@@ -262,9 +247,8 @@ async def run_habits_import():
 from bot.main import main
 
 if __name__ == "__main__":
-    # Run imports first
+    # Run imports first (safe to run multiple times - skips existing)
     asyncio.run(run_import_once())
     asyncio.run(run_habits_import())
     # Then start bot
     main()
-
