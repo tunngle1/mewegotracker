@@ -38,9 +38,5 @@ logs/
 .coverage
 htmlcov/
 
-# Import files (sensitive user data)
-database old/
-*.xlsx
+# Import complete marker (created after first run)
 .import_complete
-import_users.py
-view_users.py
