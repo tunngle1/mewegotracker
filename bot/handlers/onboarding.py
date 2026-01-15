@@ -34,6 +34,7 @@ from bot.keyboards import (
     check_in_keyboard,
     activity_level_keyboard,
     goal_keyboard,
+    training_preference_keyboard,
     reminder_time_keyboard,
     channel_keyboard,
     main_menu_keyboard
@@ -52,9 +53,10 @@ from bot.handlers.admin import notify_admin_new_user
     WAITING_CITY,
     WAITING_ACTIVITY,
     WAITING_GOAL,
+    WAITING_TRAINING_PREF,
     WAITING_REMINDER_TIME,
     WAITING_CUSTOM_REMINDER,
-) = range(12)
+) = range(13)
 
 
 async def get_or_create_user(telegram_id: int, username: str = None, 
@@ -437,6 +439,32 @@ async def goal_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     
     await update_user(query.from_user.id,
                       goal=goal,
+                      onboarding_step="training_preference")
+    
+    await query.message.reply_text(
+        "🤔 Что тебе ближе?\n\n"
+        "Выбери предпочтительный формат тренировок:",
+        reply_markup=training_preference_keyboard()
+    )
+    return WAITING_TRAINING_PREF
+
+
+async def training_preference_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle training preference choice."""
+    query = update.callback_query
+    await query.answer()
+    
+    pref = query.data.replace("training_pref_", "")
+    
+    # Map to human-readable text for storage
+    pref_display = {
+        "individual": "Индивидуальные",
+        "group": "Парные/групповые",
+        "both": "Оба варианта",
+    }.get(pref, pref)
+    
+    await update_user(query.from_user.id,
+                      training_preference=pref_display,
                       onboarding_step="profile_reminder")
     
     await query.message.reply_text(

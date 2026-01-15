@@ -62,6 +62,7 @@ class User(Base):
     onboarding_completed = Column(Boolean, default=False)
     onboarding_step = Column(String(50), default="start")  # Текущий шаг онбординга
     self_identification = Column(String(255), nullable=True)  # Ответ на самоопознавание
+    training_preference = Column(String(50), nullable=True)  # Предпочтение: individual/group
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -147,3 +148,50 @@ class Admin(Base):
     
     def __repr__(self) -> str:
         return f"<Admin(user_id={self.user_id}, added_by={self.added_by})>"
+
+
+# =============================================================================
+# POLL MODELS (for admin polls/voting)
+# =============================================================================
+
+class Poll(Base):
+    """Model for admin-created polls."""
+    __tablename__ = "polls"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    question = Column(Text, nullable=False)  # Poll question
+    options = Column(Text, nullable=False)  # JSON array of options
+    is_active = Column(Boolean, default=True)  # Can users still vote
+    is_anonymous = Column(Boolean, default=False)  # Hide who voted
+    allow_multiple = Column(Boolean, default=False)  # Multiple choice
+    created_by = Column(BigInteger, nullable=False)  # Admin who created
+    created_at = Column(DateTime, default=datetime.utcnow)
+    closed_at = Column(DateTime, nullable=True)
+    
+    # Relationships
+    votes = relationship("PollVote", back_populates="poll", cascade="all, delete-orphan")
+    
+    def get_options_list(self) -> list:
+        """Get options as Python list."""
+        import json
+        return json.loads(self.options)
+    
+    def __repr__(self) -> str:
+        return f"<Poll(id={self.id}, question={self.question[:30]}...)>"
+
+
+class PollVote(Base):
+    """Model for individual poll votes."""
+    __tablename__ = "poll_votes"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    poll_id = Column(Integer, ForeignKey("polls.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(BigInteger, nullable=False)  # Telegram user_id
+    option_index = Column(Integer, nullable=False)  # Index of selected option
+    voted_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    poll = relationship("Poll", back_populates="votes")
+    
+    def __repr__(self) -> str:
+        return f"<PollVote(poll_id={self.poll_id}, user_id={self.user_id}, option={self.option_index})>"

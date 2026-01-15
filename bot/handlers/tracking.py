@@ -206,17 +206,56 @@ async def track_habit_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     break
         
         # Update message with new keyboard
-        await query.message.edit_reply_markup(
-            reply_markup=get_habits_tracking_keyboard(active_habits, logs_today),
-        )
+        try:
+            await query.message.edit_reply_markup(
+                reply_markup=get_habits_tracking_keyboard(active_habits, logs_today),
+            )
+        except Exception:
+            # Keyboard unchanged (same button clicked twice)
+            pass
         
-        # Show status notification
+        # Show popup notification
         status_text = {
             LogStatus.DONE: "✅ Выполнено!",
             LogStatus.NOT_DONE: "❌ Не сделал",
             LogStatus.SKIPPED: "⏭ Пропущено",
         }
         await query.answer(status_text.get(status, "Сохранено"))
+        
+        # Send motivational message for DONE status
+        if status == LogStatus.DONE:
+            # Get the habit name for the message
+            habit_obj = next((h for h in active_habits if h.id == habit_id), None)
+            habit_name = habit_obj.name if habit_obj else "привычка"
+            
+            # Calculate days skipped for appropriate message
+            days_skipped = await calculate_days_skipped(user)
+            
+            # Get motivational message
+            message = get_check_in_message(
+                day_cycle=user.day_cycle,
+                days_skipped=days_skipped,
+                user_name=user.name
+            )
+            
+            # Send full message
+            await query.message.reply_text(
+                f"🎯 <b>{habit_name}</b>\n\n{message}",
+                parse_mode=ParseMode.HTML,
+                reply_markup=main_menu_keyboard(query.from_user.username)
+            )
+        
+        # Send message for NOT_DONE or SKIPPED
+        elif status == LogStatus.NOT_DONE:
+            await query.message.reply_text(
+                f"Ничего страшного! Завтра новый день 💪",
+                reply_markup=main_menu_keyboard(query.from_user.username)
+            )
+        elif status == LogStatus.SKIPPED:
+            await query.message.reply_text(
+                f"Пропуск засчитан. Иногда нужна пауза 🤍",
+                reply_markup=main_menu_keyboard(query.from_user.username)
+            )
 
 
 async def habit_info_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

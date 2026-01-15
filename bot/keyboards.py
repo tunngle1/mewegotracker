@@ -76,6 +76,15 @@ def goal_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(buttons)
 
 
+def training_preference_keyboard() -> InlineKeyboardMarkup:
+    """Кнопки выбора предпочтения в тренировках."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🧘 Индивидуальные", callback_data="training_pref_individual")],
+        [InlineKeyboardButton("👥 Парные/групповые", callback_data="training_pref_group")],
+        [InlineKeyboardButton("🔄 Оба варианта", callback_data="training_pref_both")],
+    ])
+
+
 def reminder_time_keyboard() -> InlineKeyboardMarkup:
     """Кнопки выбора времени напоминаний."""
     buttons = []

@@ -27,6 +27,7 @@ from bot.handlers.onboarding import (
     city_message,
     activity_callback,
     goal_callback,
+    training_preference_callback,
     reminder_time_callback,
     custom_reminder_message,
     cancel_command,
@@ -40,6 +41,7 @@ from bot.handlers.onboarding import (
     WAITING_CITY,
     WAITING_ACTIVITY,
     WAITING_GOAL,
+    WAITING_TRAINING_PREF,
     WAITING_REMINDER_TIME,
     WAITING_CUSTOM_REMINDER,
 )
@@ -98,7 +100,15 @@ from bot.handlers.settings import (
 # Admin handlers
 from bot.handlers.admin import (
     admin_stats_command, users_list_command, export_command, 
-    export_habits_command, admin_callback_handler
+    export_habits_command, admin_callback_handler,
+    # Broadcast handlers
+    start_broadcast, receive_broadcast_message, confirm_broadcast_callback,
+    cancel_broadcast, BROADCAST_WAITING_MESSAGE, BROADCAST_CONFIRM,
+    # Poll handlers
+    start_poll, receive_poll_question, receive_poll_options, confirm_poll_callback,
+    cancel_poll, show_polls_list, show_poll_results, close_poll, export_poll_votes,
+    vote_poll_callback, admin_back_callback,
+    POLL_WAITING_QUESTION, POLL_WAITING_OPTIONS, POLL_CONFIRM
 )
 
 # Scheduler
@@ -152,6 +162,9 @@ def main() -> None:
             ],
             WAITING_GOAL: [
                 CallbackQueryHandler(goal_callback, pattern="^goal_")
+            ],
+            WAITING_TRAINING_PREF: [
+                CallbackQueryHandler(training_preference_callback, pattern="^training_pref_")
             ],
             WAITING_REMINDER_TIME: [
                 CallbackQueryHandler(reminder_time_callback, pattern="^reminder_")
@@ -317,10 +330,85 @@ def main() -> None:
         pattern="^settings:reminders_off$"
     ))
     
-    # Callback query handlers for admin panel
+    # ==========================================================================
+    # BROADCAST CONVERSATION HANDLER (for admin panel)
+    # ==========================================================================
+    broadcast_handler = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(start_broadcast, pattern="^admin:broadcast$"),
+        ],
+        states={
+            BROADCAST_WAITING_MESSAGE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_broadcast_message),
+                MessageHandler(filters.PHOTO, receive_broadcast_message),
+                MessageHandler(filters.VIDEO, receive_broadcast_message),
+                MessageHandler(filters.Document.ALL, receive_broadcast_message),
+                CallbackQueryHandler(confirm_broadcast_callback, pattern="^admin:broadcast_cancel$"),
+            ],
+            BROADCAST_CONFIRM: [
+                CallbackQueryHandler(confirm_broadcast_callback, pattern="^admin:broadcast_"),
+            ],
+        },
+        fallbacks=[
+            CommandHandler("cancel", cancel_broadcast),
+        ],
+        allow_reentry=True
+    )
+    application.add_handler(broadcast_handler)
+    
+    # ==========================================================================
+    # POLL CONVERSATION HANDLER (for admin panel)
+    # ==========================================================================
+    poll_handler = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(start_poll, pattern="^admin:poll$"),
+        ],
+        states={
+            POLL_WAITING_QUESTION: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_poll_question),
+                CallbackQueryHandler(confirm_poll_callback, pattern="^admin:poll_cancel$"),
+            ],
+            POLL_WAITING_OPTIONS: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_poll_options),
+                CallbackQueryHandler(confirm_poll_callback, pattern="^admin:poll_cancel$"),
+            ],
+            POLL_CONFIRM: [
+                CallbackQueryHandler(confirm_poll_callback, pattern="^admin:poll_"),
+            ],
+        },
+        fallbacks=[
+            CommandHandler("cancel", cancel_poll),
+        ],
+        allow_reentry=True
+    )
+    application.add_handler(poll_handler)
+    
+    # Poll-related callbacks (outside conversation)
+    application.add_handler(CallbackQueryHandler(
+        show_polls_list, pattern="^admin:polls_list$"
+    ))
+    application.add_handler(CallbackQueryHandler(
+        show_poll_results, pattern="^admin:poll_results:"
+    ))
+    application.add_handler(CallbackQueryHandler(
+        close_poll, pattern="^admin:close_poll:"
+    ))
+    application.add_handler(CallbackQueryHandler(
+        export_poll_votes, pattern="^admin:export_poll:"
+    ))
+    application.add_handler(CallbackQueryHandler(
+        admin_back_callback, pattern="^admin:back$"
+    ))
+    
+    # User voting callback
+    application.add_handler(CallbackQueryHandler(
+        vote_poll_callback, pattern="^vote:"
+    ))
+    
+    # Callback query handlers for admin panel (excluding broadcast and poll which are handled above)
     application.add_handler(CallbackQueryHandler(
         admin_callback_handler,
-        pattern="^admin:"
+        pattern="^admin:(?!broadcast|poll|polls_list|poll_results|close_poll|export_poll|back)"
     ))
     
     # Fallback text message handler (must be last)

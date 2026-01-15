@@ -1,6 +1,6 @@
 """Scheduler for reminders and delayed messages."""
 import logging
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from telegram.ext import Application
@@ -15,6 +15,15 @@ logger = logging.getLogger(__name__)
 
 # Moscow timezone (UTC+3)
 MSK = ZoneInfo("Europe/Moscow")
+
+# Messages for missed days
+MISSED_DAY_MESSAGES = [
+    "💭 Сегодня без отметки, но это не страшно. Завтра — новый день 🤍",
+    "🌙 День без отметки. Не ругай себя, просто вернись завтра.",
+    "⏰ Пропуск случается. Главное — не бросать совсем. До завтра!",
+]
+
+MISSED_MULTIPLE_DAYS = "🌿 Ты не отмечался уже {days} дн. Ничего страшного — возвращайся, когда будешь готов 🤍"
 
 
 async def send_reminders(context) -> None:
@@ -67,6 +76,62 @@ async def send_reminders(context) -> None:
                 logger.error(f"Failed to send reminder to {user.telegram_id}: {e}")
 
 
+async def send_missed_day_notifications(context) -> None:
+    """Send notifications to users who missed their check-in today. Runs at 22:00 MSK."""
+    now = datetime.now(MSK)
+    today = now.date()
+    
+    logger.info(f"Checking missed day notifications at {now.strftime('%H:%M')} MSK")
+    
+    async with async_session() as session:
+        # Find all users with completed onboarding
+        result = await session.execute(
+            select(User).where(User.onboarding_completed == True)
+        )
+        users = result.scalars().all()
+        
+        for user in users:
+            try:
+                # Skip if checked in today
+                if user.last_check_in:
+                    last_date = user.last_check_in.date()
+                    if last_date == today:
+                        continue
+                    
+                    # Calculate days since last check-in
+                    days_missed = (today - last_date).days
+                else:
+                    # Never checked in
+                    days_missed = 1
+                
+                # Don't spam if missed more than 7 days (check every 3 days max)
+                if days_missed > 7 and days_missed % 3 != 0:
+                    continue
+                
+                # Build message based on days missed
+                if days_missed == 1:
+                    # Use random message for single day miss
+                    import random
+                    message = random.choice(MISSED_DAY_MESSAGES)
+                    if user.name:
+                        message = f"{user.name}, {message[0].lower()}{message[1:]}"
+                else:
+                    message = MISSED_MULTIPLE_DAYS.format(days=days_missed)
+                    if user.name:
+                        message = f"{user.name}, {message[0].lower()}{message[1:]}"
+                
+                # Send notification
+                await context.bot.send_message(
+                    chat_id=user.telegram_id,
+                    text=message,
+                    reply_markup=main_menu_keyboard()
+                )
+                logger.info(f"Sent missed day notification to user {user.telegram_id} (missed {days_missed} days)")
+                
+            except Exception as e:
+                logger.error(f"Failed to send missed day notification to {user.telegram_id}: {e}")
+
+
 def setup_scheduler(application: Application) -> None:
     """Setup the reminder scheduler to run every minute."""
     job_queue = application.job_queue
@@ -78,4 +143,11 @@ def setup_scheduler(application: Application) -> None:
         first=10  # Start after 10 seconds
     )
     
-    logger.info("Reminder scheduler started")
+    # Run missed day check at 22:00 MSK every day
+    job_queue.run_daily(
+        send_missed_day_notifications,
+        time=time(hour=22, minute=0, tzinfo=MSK),
+        name="missed_day_check"
+    )
+    
+    logger.info("Reminder scheduler started (reminders every minute, missed day check at 22:00 MSK)")
